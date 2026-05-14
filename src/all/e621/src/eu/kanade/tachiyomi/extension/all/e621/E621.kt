@@ -125,7 +125,7 @@ class E621 :
                 // is ActiveOnlyFilter -> activeOnly = filter.state
                 // is DescriptionFilter -> description = filter.state.trim()
                 is PoolGroupFilter -> {
-                    category = filter.getDescription()
+                    category = filter.getCategory()
                     order = filter.getOrder()
                     activeOnly = filter.getActiveOnly()
                     description = filter.getDescription()
@@ -140,6 +140,16 @@ class E621 :
                 else -> {}
             }
         }
+        // Log.d(logTag, "modef:$mode") // DELETE ME
+        // Log.d(logTag, "categ:$category") // DELETE ME
+        // Log.d(logTag, "order:$order") // DELETE ME
+        // Log.d(logTag, "activ:$activeOnly") // DELETE ME
+        // Log.d(logTag, "descr:$description") // DELETE ME
+        // Log.d(logTag, "ortag:$orderTag") // DELETE ME
+        // Log.d(logTag, "tagsf:$tags") // DELETE ME
+        // Log.d(logTag, "first:$firstPage") // DELETE ME
+        // Log.d(logTag, "endpa:$endPage") // DELETE ME
+        // Log.d(logTag, "datet:$dateTag") // DELETE ME
 
         url.addPathSegment(mode)
 
@@ -212,7 +222,8 @@ class E621 :
 
         val poolList = pools.map { pool ->
             SManga.create().apply {
-                url = pool.id.toString()
+                // url = pool.id.toString()
+                url = "$baseUrl/pools/${pool.id}"
                 title = pool.name.replace("_", " ")
                 thumbnail_url = pool.postIds.firstOrNull()
                     ?.let { thumbnailMap[it] }
@@ -224,13 +235,38 @@ class E621 :
 
     // Details
     override fun mangaDetailsRequest(manga: SManga): Request {
-        val poolId = manga.url
-        val url = "$baseUrl/pools/$poolId.json"
+        val mangaUrl = manga.url.toHttpUrlOrNull() ?: "$baseUrl/null/0"
+        val mangaType = mangaUrl.pathSegments.firstOrNull() ?: "null"
+        val mangaId = mangaUrl.pathSegments.lastOrNull() ?: "0"
+
+        // if (mangaPath == "pool") {
+        // val poolId = mangaUrl.pathSegments.lastOrNull()!!
+        // val url = "$baseUrl/pools/$poolId.json"
+        // }
+
+        val url = when (mangaPath) {
+            "pools" -> "$baseUrl/pools/$poolId.json"
+            "posts" -> "$baseUrl/posts.json?limit=0&tags=${}".toHttpUrl().newBuilder()
+                .addQueryParameter("tags", mangaUrl.queryParameter("q") :? "")
+                .toString()
+            else -> ""
+        }
+        
         Log.d(logTag, "GET $url") // DEBUG
-        return GET(url, headers)
+        return GET(url , headers)
     }
 
     override fun mangaDetailsParse(response: Response): SManga {
+        val url = response.url.toHttpUrlOrNull() ?: "$baseUrl/null/0"
+        val path = url.pathSegments.firstOrNull() ?: "null"
+
+        return when (path) {
+            "pools" -> mangaDetailsParsePool(response)
+            "posts.json" -> mangaDetailsParseSearch(response)
+        }
+    }
+
+    override fun mangaDetailsParsePool(response: Response): SManga 
         val pool = response.parseAs<Pool>()
 
         // fetch first 40 posts for common tags and artist
@@ -258,7 +294,8 @@ class E621 :
             .map { it.first }
 
         return SManga.create().apply {
-            url = pool.id.toString()
+            // url = pool.id.toString()
+            url = "$baseUrl/pools/${pool.id}"
             title = pool.name.replace("_", " ")
             description = pool.description
 
@@ -273,12 +310,53 @@ class E621 :
         }
     }
 
-    override fun getMangaUrl(manga: SManga): String = "$baseUrl/pools/${manga.url}"
 
-    override fun getChapterUrl(chapter: SChapter): String = "$baseUrl${chapter.url}"
+    // TODO: Move these
+    private fun poolApiUrl(poolId: String): HttpUrl
+    private fun postApiUrl(postId: String): HttpUrl
+    private fun searchApiUrl()
+    
+    private fun apiUrlType()
+    
+    private fun poolWebUrl(apiUrl: HttpUrl): HttpUrl
+    private fun postWebUrl(apiUrl: HttpUrl): HttpUrl
+    private fun searchWebUrl(apiUrl: HttpUrl): HttpUrl
+
+    override fun mangaDetailsParseSearch(response: Response): SManga {
+        // val posts = response.parseAs<PostsResponse>().posts
+        val searchUrl = response.url.toHttpUrlOrNull()?.newBuilder() ?: return SManga.create()
+
+        val url = "$baseUrl/posts.json?limit=0&tags=${}".toHttpUrl().newBuilder()
+                .addQueryParameter("tags", mangaUrl.queryParameter("q") :? "")
+                .toString()
+
+        return SManga.create().apply {
+            url = searchUrl.addQueryParameter("limit", 320).toString()
+            title = searchUrl.queryParameter("tags")
+            description = pool.description
+
+            status = when (pool.isActive) {
+                true -> SManga.ONGOING
+                false -> SManga.COMPLETED
+                else -> SManga.UNKNOWN
+            }
+
+            genre = "rating:$rating, " + tags.joinToString(", ")
+            author = artists.joinToString(", ")
+        }
+    }
+
+    // override fun getMangaUrl(manga: SManga): String = "$baseUrl/pools/${manga.url}"
+    // override fun getMangaUrl(manga: SManga): String = "$baseUrl/${manga.url}"
+    override fun getMangaUrl(manga: SManga): String = manga.url
+
+    // override fun getChapterUrl(chapter: SChapter): String = "$baseUrl${chapter.url}"
+    override fun getChapterUrl(chapter: SChapter): String = manga.url
 
     // Chapters
     override fun chapterListRequest(manga: SManga): Request {
+        val parturl = manga.url.
+        
         val poolId = manga.url
         val url = "$baseUrl/pools/$poolId.json"
         Log.d(logTag, "GET $url") // DEBUG
